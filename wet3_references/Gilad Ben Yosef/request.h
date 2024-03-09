@@ -1,5 +1,6 @@
 #ifndef __REQUEST_H__
 
-void requestHandle(int fd);
+int requestHandle(int fd, struct timeval arrivalTime, struct timeval currTime, int threadID, int* threadCountArr,
+                    int* threadDynamicArr, int* threadStaticArr);
 
 #endif

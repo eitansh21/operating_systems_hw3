@@ -486,7 +486,7 @@ int open_clientfd(char *hostname, int port)
         return -2; /* check h_errno for cause of error */
     bzero((char *) &serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
-    bcopy((char *)hp->h_addr, 
+    bcopy((char *)hp->h_addr_list[0], 
           (char *)&serveraddr.sin_addr.s_addr, hp->h_length);
     serveraddr.sin_port = htons(port);
 

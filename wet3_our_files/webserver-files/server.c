@@ -65,28 +65,26 @@ void getargs(int *port, int* threads_num, int* queue_size, enum SCHEDUA_ALGORITH
 }
 
 
-
 void* processRequest(void* args){
-    int thread_index =((int *)args)[0];
+    int threadIndex = *((int *) args);
 
-    while(1){
+    while(1) {
         pthread_mutex_lock(&m);
         while(isEmpty(pendingRequestsQueue)){
             pthread_cond_wait(&cond, &m);
         }
-        // handle
-        struct timeval arrival = queue_head_arrival_time(pendingRequestsQueue);
-        int fd = dequeue(pendingRequestsQueue);
-        enqueue(workerThreadsQueue, fd, arrival);
+
+        Node* requestNode = dequeue(pendingRequestsQueue);
+        Node* workThreadNode = enqueue(workerThreadsQueue, requestNode->connfd, requestNode->arrival_time);
         pthread_mutex_unlock(&m);
 
-        struct timeval handle_time;
-        gettimeofday(&handle_time,NULL);
+        struct timeval handleTime;
+        gettimeofday(&handleTime, NULL);
 
-        requestHandle(fd, arrival, handle_time, thread_index);
-
+        requestHandle(requestNode->connfd, requestNode->arrival_time, handleTime, threadIndex);
+        freeNode(requestNode);
         pthread_mutex_lock(&m);
-        dequeue_index(workerThreadsQueue, queue_find(workerThreadsQueue,fd));
+        removeAndDeleteNode(workerThreadsQueue, workThreadNode);
         pthread_cond_signal(&cond);
         pthread_mutex_unlock(&m);
     }
@@ -95,10 +93,9 @@ void* processRequest(void* args){
 
 
 
-
 int main(int argc, char *argv[])
 {
-    int listenfd, connfd, port, clientlen, threadsNum, queueSize;
+    int listenFd, connFd, port, clientLen, threadsNum, queueSize;
     enum SCHEDUA_ALGORITHM schedAlg;
     struct sockaddr_in clientaddr;
     intializeMutexAndCond();
@@ -116,23 +113,69 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    for (int i = 0; i < threadsNum; i++) {
+        if (pthread_create(&threads[i], NULL, processRequest, (void*)& i)!=0) {
+            exit(EXIT_FAILURE);
+        }
+    }
 
 
 
 
-    listenfd = Open_listenfd(port);
+
+    listenFd = Open_listenfd(port);
     while (1) {
-	clientlen = sizeof(clientaddr);
-	connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
-
+        clientLen = sizeof(clientaddr);
+        connFd = Accept(listenFd, (SA *)&clientaddr, (socklen_t *) &clientLen);
+    pthread_mutex_lock(&m);
 	// 
 	// HW3: In general, don't handle the request in the main thread.
 	// Save the relevant info in a buffer and have one of the worker threads 
 	// do the work. 
-	// 
-	requestHandle(connfd);
+	//
+    if (getSize(pendingRequestsQueue) + getSize(workerThreadsQueue) == queueSize){
+        if (schedAlg == BLOCK){
+            while(getSize(pendingRequestsQueue) + getSize(workerThreadsQueue) == queueSize){
+                pthread_cond_wait(&cond, &m);
+            }
+        }
+        else if (schedAlg == DT){
+            Close(connFd);
+            pthread_mutex_unlock(&m);
+            continue;
+//            pop_from_queue_in_index(0);
+        }
+        else if (schedAlg == DH){
+            dequeue(pendingRequestsQueue);
+//            pop_from_queue_in_index(getSize(pendingRequestsQueue) - 1);
+        }
+        else if (schedAlg == BF){
+            int element_index_to_drop = queue_find(pendingRequestsQueue, connFd);
+            pop_from_queue_in_index(element_index_to_drop);
+        }
+        else if (schedAlg == RANDOM){
+            int num_to_drop = rand() % getSize(pendingRequestsQueue);
+            while(num_to_drop > 0){
+                int element_index_to_drop = rand() % getSize(pendingRequestsQueue);
+                pop_from_queue_in_index(element_index_to_drop);
+                num_to_drop--;
+            }
+            pthread_mutex_unlock(&m);
+            continue;
+        }
+//        pthread_mutex_unlock(&m);
+//        continue;
+    }
+    struct timeval arrival;
+    gettimeofday(&arrival, NULL);
+    enqueue(pendingRequestsQueue, connFd, arrival);
+    pthread_cond_signal(&cond);
+    pthread_mutex_unlock(&m);
 
-	Close(connfd);
+
+//	requestHandle(connFd);
+
+//	Close(connFd);
     }
 
 }

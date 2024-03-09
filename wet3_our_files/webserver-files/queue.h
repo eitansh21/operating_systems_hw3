@@ -11,20 +11,20 @@
 #define SUCCESS_CODE 0
 
 typedef struct Node{
-    int data;
+    int connfd;
     struct Node* next;
     struct Node* prev;
-    struct timeval arrival;
+    struct timeval arrival_time;
 } Node;
 
 
-Node* createNode(int data, struct timeval time);
+Node* createNode(int connfd, struct timeval arrivalTime);
 void freeNode(Node* n);
 
 typedef struct {
-    int currentSize;
+    int size;
     int maxSize;
-    Node* head_queue;
+    Node* head;
     Node* end_queue;
 } Queue;
 
@@ -33,9 +33,10 @@ Queue* createQueue(int maxSize);
 bool isFull(Queue* q);
 bool isEmpty(Queue* q);
 int getSize(Queue* q);
-int enqueue(Queue* q, int data, struct timeval time);
-int dequeue(Queue* q);
-struct timeval getHeadArrival(Queue* q);
+Node* enqueue(Queue* q, int connfd, struct timeval arrivalTime);
+Node* dequeue(Queue* q);
+void removeAndDeleteNode(Queue* q, Node* n);
+
 void freeQueue(Queue* q);
 
 

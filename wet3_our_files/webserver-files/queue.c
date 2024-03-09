@@ -1,54 +1,53 @@
 #include "queue.h"
 
 
+Node* createNode(int connfd, struct timeval arrivalTime){
+    assert(connfd >= 0);
 
-Node* createNode(int data, struct timeval time){
-    Node* res = malloc(sizeof(Node));
-    res->data = data;
-    res->arrival = time;
+    Node* res = (Node*)malloc(sizeof(Node));
+    res->connfd = connfd;
+    res->arrival_time = arrivalTime;
     return res;
 }
 
 void freeNode(Node* n){
+    assert(n != NULL);
     free(n);
 }
 
 
-
-
 Queue* createQueue(int maxSize){
-    Queue* res = malloc(sizeof(Queue));
-    res->head_queue = NULL;
+    assert(maxSize > 0);
+    Queue* res = (Queue*)malloc(sizeof(Queue));
+    res->head = NULL;
     res->end_queue = NULL;
-    res->currentSize = 0;
+    res->size = 0;
     res->maxSize = maxSize;
     return res;
 }
 
 bool isFull(Queue* q){
-    return q->currentSize == q->maxSize;
+    assert(q->size >= 0);
+    return q->size == q->maxSize;
 }
 
 bool isEmpty(Queue* q){
-    return q->currentSize == 0;
+    assert(q->size >= 0);
+    return q->size == 0;
 }
 
 int getSize(Queue* q){
-    return q->currentSize;
+    assert(q->size >= 0);
+    return q->size;
 }
 
-int enqueue(Queue* q, int data, struct timeval time){
-    if (isFull(q)) {
-        return ERROR_CODE;
-    }
-    Node* newNode = createNode(data, time);
-    //TODO: check if we need to free the memory of newNode if we fail to allocate memory
-    if (!newNode) {
-        return ERROR_CODE;  // Indicates failure
-    }
+Node* enqueue(Queue* q, int connfd, struct timeval arrivalTime){
+    assert(!isFull(q));
 
-    if (q->currentSize == 0) {
-        q->head_queue = newNode;
+    Node* newNode = createNode(connfd, arrivalTime);
+
+    if (q->size == 0) {
+        q->head = newNode;
         q->end_queue = newNode;
     } else {
         newNode->prev = q->end_queue;
@@ -56,30 +55,48 @@ int enqueue(Queue* q, int data, struct timeval time){
         q->end_queue = newNode;
     }
 
-    q->currentSize++;
-    return SUCCESS_CODE;
+    q->size++;
+    return newNode;
 }
 
-int dequeue(Queue* q){
-    if (q->currentSize == 0) {
-        return ERROR_CODE;
-    }
+Node* dequeue(Queue* q){
+    assert(!isEmpty(q));
 
-    Node* temp = q->head_queue;
-    int data_of_head = temp->data;
+    Node* headNode = q->head;
 
-    if (getSize(q) > 1){ //needs at least 2 threads in the queue in order to manage that
-        q->head_queue = temp->next;
-        q->head_queue->prev = NULL;
+    if (getSize(q) > 1) {
+        q->head = headNode->next;
+        q->head->prev = NULL;
     }
     else {
         q->end_queue = NULL;
-        q->head_queue = NULL;
+        q->head = NULL;
     }
-    q->currentSize--;
-    freeNode(temp); //free the memory we have allocated
+    q->size--;
 
-    return data_of_head;
+    return headNode;
 }
 
-
+void removeAndDeleteNode(Queue* q, Node* n) {
+    Node* curr = q->head;
+    while (curr != NULL) {
+        if (curr == n) {
+            if (curr->prev != NULL) {
+                curr->prev->next = curr->next;
+            }
+            if (curr->next != NULL) {
+                curr->next->prev = curr->prev;
+            }
+            if (curr == q->head) {
+                q->head = curr->next;
+            }
+            if (curr == q->end_queue) {
+                q->end_queue = curr->prev;
+            }
+            q->size--;
+            freeNode(curr);
+            return;
+        }
+        curr = curr->next;
+    }
+}
