@@ -1,12 +1,12 @@
 #include "queue.h"
 
 
-Node* createNode(int connfd, struct timeval arrivalTime){
+Node* createNode(int connfd, struct timeval arrival){
     assert(connfd >= 0);
 
     Node* res = (Node*)malloc(sizeof(Node));
     res->connfd = connfd;
-    res->arrival_time = arrivalTime;
+    res->arrival = arrival;
     return res;
 }
 
@@ -41,10 +41,10 @@ int getSize(Queue* q){
     return q->size;
 }
 
-Node* enqueue(Queue* q, int connfd, struct timeval arrivalTime){
+Node* enqueue(Queue* q, int connFd, struct timeval arrival){
     assert(!isFull(q));
 
-    Node* newNode = createNode(connfd, arrivalTime);
+    Node* newNode = createNode(connFd, arrival);
 
     if (q->size == 0) {
         q->head = newNode;
@@ -77,7 +77,7 @@ Node* dequeue(Queue* q){
     return headNode;
 }
 
-void removeAndDeleteNode(Queue* q, Node* n) {
+void removeNode(Queue* q, Node* n) {
     Node* curr = q->head;
     while (curr != NULL) {
         if (curr == n) {
@@ -99,4 +99,15 @@ void removeAndDeleteNode(Queue* q, Node* n) {
         }
         curr = curr->next;
     }
+    assert(false);
+}
+
+
+Node* getNodeInIndex(Queue* q, int index) {
+    assert(index >= 0 && index < getSize(q));
+    Node* curr = q->head;
+    for (int i = 0; i < index; i++) {
+        curr = curr->next;
+    }
+    return curr;
 }
