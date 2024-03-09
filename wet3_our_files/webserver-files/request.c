@@ -222,7 +222,7 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, thre
             return;
         }
         (t_stats->stat_req)++;
-        requestServeStatic(fd, filename, sbuf.st_size);
+        requestServeStatic(fd, filename, sbuf.st_size, arrival, dispatch, t_stats);
     } else {
         if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode)) {
             requestError(fd, filename, "403", "Forbidden", "OS-HW3 Server could not run this CGI program", arrival, dispatch, t_stats);
