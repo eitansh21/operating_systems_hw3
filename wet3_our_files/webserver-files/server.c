@@ -19,6 +19,7 @@
 
 pthread_mutex_t m;
 pthread_cond_t cond;
+pthread_cond_t block_cond;
 
 Queue* workerThreadsQueue;
 Queue* pendingRequestsQueue;
@@ -35,6 +36,7 @@ enum SCHEDULER_ALGORITHM {
 void initializeMutexAndCond() {
     pthread_mutex_init(&m, NULL);
     pthread_cond_init(&cond, NULL);
+    pthread_cond_init(&block_cond, NULL);
 }
 
 
@@ -61,6 +63,7 @@ void getargs(int *port, int* threads_num, int* queue_size, enum SCHEDULER_ALGORI
     } else if (strcmp(argv[4], "random") == 0) {
         *schedalg = RANDOM;
     } else {
+        assert(false);
 //        printf(stderr, "Wrong schedalg\n");
         exit(1);
     }
@@ -71,28 +74,35 @@ void* processRequest(void* args){
     int threadIndex = *((int *) args);
 
     while(1) {
+
         pthread_mutex_lock(&m);
+
+        if (isEmpty(workerThreadsQueue)) {
+            pthread_cond_signal(&block_cond);
+        }
+
         while(isEmpty(pendingRequestsQueue)){
             pthread_cond_wait(&cond, &m);
         }
-
         Node* requestNode = dequeue(pendingRequestsQueue);
 
         Node* workThreadNode = enqueue(workerThreadsQueue, requestNode->connfd, requestNode->arrival);
+        freeNode(requestNode);
         pthread_mutex_unlock(&m);
 
         struct timeval handle;
         gettimeofday(&handle, NULL);
 
         struct timeval dispatch;
-        timersub(&handle, &requestNode->arrival, &dispatch);
+        timersub(&handle, &workThreadNode->arrival, &dispatch);
+        requestHandle(workThreadNode->connfd, workThreadNode->arrival, dispatch, threadsStats[threadIndex]);
 
-        requestHandle(requestNode->connfd, requestNode->arrival, dispatch, threadsStats[threadIndex]);
-        Close(requestNode->connfd);
-        freeNode(requestNode);
+        Close(workThreadNode->connfd);
+
         pthread_mutex_lock(&m);
         removeNode(workerThreadsQueue, workThreadNode);
-        pthread_cond_signal(&cond);
+
+        pthread_cond_signal(&block_cond);
         pthread_mutex_unlock(&m);
     }
 }
@@ -119,18 +129,26 @@ int main(int argc, char *argv[])
         }
     }
 
-    threadsStats = (thread_stats*)malloc(threadsNum * sizeof(thread_stats));
+    threadsStats = (thread_stats*) malloc(threadsNum * sizeof(thread_stats));
+    for (int i = 0; i < threadsNum; i++) {
+        threadsStats[i] = (thread_stats) malloc(sizeof(struct Thread_stats));
+        threadsStats[i]->id = i;
+        threadsStats[i]->stat_req = 0;
+        threadsStats[i]->dynm_req = 0;
+        threadsStats[i]->total_req = 0;
+    }
 
 
     listenFd = Open_listenfd(port);
     while (1) {
+        pthread_mutex_lock(&m);
         clientLen = sizeof(clientAddr);
         connFd = Accept(listenFd, (SA *)&clientAddr, (socklen_t *) &clientLen);
-        pthread_mutex_lock(&m);
+
         if (getSize(pendingRequestsQueue) + getSize(workerThreadsQueue) == queueSize){
             if (schedAlg == BLOCK){
                 while(getSize(pendingRequestsQueue) + getSize(workerThreadsQueue) == queueSize){
-                    pthread_cond_wait(&cond, &m);
+                    pthread_cond_wait(&block_cond, &m);
                 }
             }
             else if (schedAlg == DROP_TAIL) {
@@ -151,7 +169,7 @@ int main(int argc, char *argv[])
             }
             else if (schedAlg == BLOCK_FLUSH) {
                 while (getSize(workerThreadsQueue) > 0){
-                    pthread_cond_wait(&cond, &m);
+                    pthread_cond_wait(&block_cond, &m);
                 }
                 Close(connFd);
                 pthread_mutex_unlock(&m);
