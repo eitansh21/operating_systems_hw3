@@ -109,5 +109,15 @@ Node* getNodeInIndex(Queue* q, int index) {
     for (int i = 0; i < index; i++) {
         curr = curr->next;
     }
+    assert(curr != NULL);
     return curr;
+}
+
+void printQueue(Queue* q){
+    Node* curr = q->head;
+    while (curr != NULL){
+        printf("%d ", curr->connfd);
+        curr = curr->next;
+    }
+    printf("\n");
 }

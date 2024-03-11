@@ -39,6 +39,7 @@ void removeNode(Queue* q, Node* n);
 Node* getNodeInIndex(Queue* q, int index);
 
 void freeQueue(Queue* q);
+void printQueue(Queue* q);
 
 
 
