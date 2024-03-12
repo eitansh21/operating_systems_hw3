@@ -96,13 +96,14 @@ void* processRequest(void* args){
         Close(workThreadNode->connfd);
 
         pthread_mutex_lock(&m);
+        pthread_cond_signal(&cond_is_buffer_available);
         removeNode(workerThreadsQueue, workThreadNode);
 
         if (isEmpty(workerThreadsQueue) && isEmpty(pendingRequestsQueue)) {
             pthread_cond_signal(&cond_is_worker_threads_and_pending_requests_empty);
         }
 
-        pthread_cond_signal(&cond_is_buffer_available);
+
         pthread_mutex_unlock(&m);
     }
 }
@@ -151,7 +152,7 @@ int main(int argc, char *argv[])
         gettimeofday(&arrival, NULL);
         pthread_mutex_lock(&m);
 
-        if (getSize(pendingRequestsQueue) + getSize(workerThreadsQueue) == queueSize){
+        if (getSize(pendingRequestsQueue) + getSize(workerThreadsQueue) == queueSize) {
             if (schedAlg == BLOCK){
 
                 while(getSize(pendingRequestsQueue) + getSize(workerThreadsQueue) == queueSize){
@@ -205,7 +206,6 @@ int main(int argc, char *argv[])
 
             }
         }
-
         enqueue(pendingRequestsQueue, connFd, arrival);
         pthread_cond_signal(&cond_is_pending_request_empty);
         pthread_mutex_unlock(&m);
