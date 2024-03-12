@@ -2,6 +2,7 @@
 // request.c: Does the bulk of the work for the web server.
 // 
 
+#include <assert.h>
 #include "segel.h"
 #include "request.h"
 
@@ -170,10 +171,11 @@ void requestServeStatic(int fd, char *filename, int filesize, struct timeval arr
     sprintf(buf, "%sServer: OS-HW3 Web Server\r\n", buf);
     sprintf(buf, "%sContent-Length: %d\r\n", buf, filesize);
     sprintf(buf, "%sContent-Type: %s\r\n\r\n", buf, filetype);
+
     sprintf(buf, "%sStat-Req-Arrival:: %lu.%06lu\r\n", buf, arrival.tv_sec, arrival.tv_usec);
 
     sprintf(buf, "%sStat-Req-Dispatch:: %lu.%06lu\r\n", buf, dispatch.tv_sec, dispatch.tv_usec);
-
+    assert(t_stats->id >= 0);
     sprintf(buf, "%sStat-Thread-Id:: %d\r\n", buf, t_stats->id);
 
     sprintf(buf, "%sStat-Thread-Count:: %d\r\n", buf, t_stats->total_req);
@@ -193,7 +195,7 @@ void requestServeStatic(int fd, char *filename, int filesize, struct timeval arr
 // handle a request
 void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, thread_stats t_stats)
 {
-    printf("Handling request\n");
+    assert(t_stats->id >= 0);
     int is_static;
     struct stat sbuf;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
@@ -204,9 +206,9 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, thre
     Rio_readlineb(&rio, buf, MAXLINE);
     sscanf(buf, "%s %s %s", method, uri, version);
     printf("%s %s %s\n", method, uri, version);
-    printf("Im here\n");
+
     (t_stats->total_req)++;
-    printf("Total requests: %d\n", t_stats->total_req);
+
     if (strcasecmp(method, "GET")) {
         requestError(fd, method, "501", "Not Implemented", "OS-HW3 Server does not implement this method", arrival, dispatch, t_stats);
         return;

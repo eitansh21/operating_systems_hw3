@@ -20,7 +20,7 @@
 pthread_mutex_t m;
 pthread_cond_t cond_is_pending_request_empty;
 pthread_cond_t cond_is_buffer_available;
-pthread_cond_t cond_is_woerker_threads_and_pending_requests_empty;
+pthread_cond_t cond_is_worker_threads_and_pending_requests_empty;
 
 Queue* workerThreadsQueue;
 Queue* pendingRequestsQueue;
@@ -37,7 +37,7 @@ enum SCHEDULER_ALGORITHM {
 void initializeMutexAndCond() {
     pthread_mutex_init(&m, NULL);
     pthread_cond_init(&cond_is_pending_request_empty, NULL);
-    pthread_cond_init(&cond_is_woerker_threads_and_pending_requests_empty, NULL);
+    pthread_cond_init(&cond_is_worker_threads_and_pending_requests_empty, NULL);
     pthread_cond_init(&cond_is_buffer_available, NULL);
 }
 
@@ -99,7 +99,7 @@ void* processRequest(void* args){
         removeNode(workerThreadsQueue, workThreadNode);
 
         if (isEmpty(workerThreadsQueue) && isEmpty(pendingRequestsQueue)) {
-            pthread_cond_signal(&cond_is_woerker_threads_and_pending_requests_empty);
+            pthread_cond_signal(&cond_is_worker_threads_and_pending_requests_empty);
         }
 
         pthread_cond_signal(&cond_is_buffer_available);
@@ -178,7 +178,7 @@ int main(int argc, char *argv[])
             }
             else if (schedAlg == BLOCK_FLUSH) {
                 while (getSize(workerThreadsQueue) > 0){
-                    pthread_cond_wait(&cond_is_woerker_threads_and_pending_requests_empty, &m);
+                    pthread_cond_wait(&cond_is_worker_threads_and_pending_requests_empty, &m);
                 }
                 Close(connFd);
                 pthread_mutex_unlock(&m);
