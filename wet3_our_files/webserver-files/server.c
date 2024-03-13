@@ -4,27 +4,16 @@
 #include <pthread.h>
 #include "thread.h"
 
-// 
-// server.c: A very, very simple web server
-//
-// To run:
-//  ./server <portnum (above 2000)>
-//
-// Repeatedly handles HTTP requests sent to this port number.
-// Most of the work is done within routines written in request.c
-//
-
-
 #define ARGS_SIZE 5
 
 pthread_mutex_t m;
 pthread_cond_t cond_is_pending_request_empty;
 pthread_cond_t cond_is_buffer_available;
 pthread_cond_t cond_is_worker_threads_and_pending_requests_empty;
-
-Queue* workerThreadsQueue;
 Queue* pendingRequestsQueue;
+static int threadsInUse = 0;
 thread_stats* threadsStats;
+
 
 enum SCHEDULER_ALGORITHM {
     BLOCK,
@@ -34,6 +23,7 @@ enum SCHEDULER_ALGORITHM {
     RANDOM
 };
 
+
 void initializeMutexAndCond() {
     pthread_mutex_init(&m, NULL);
     pthread_cond_init(&cond_is_pending_request_empty, NULL);
@@ -41,10 +31,7 @@ void initializeMutexAndCond() {
     pthread_cond_init(&cond_is_buffer_available, NULL);
 }
 
-
-
-// HW3: Parse the new arguments too
-void getargs(int *port, int* threads_num, int* queue_size, enum SCHEDULER_ALGORITHM* schedalg, int argc, char *argv[])
+void getargs(int *port,int *threads_num,int* queue_size,enum SCHEDULER_ALGORITHM *schedalg, int argc, char *argv[])
 {
     if (argc < ARGS_SIZE) {
         fprintf(stderr, "Usage: %s <portnum> <threads> <queue_size> <schedalg>\n", argv[0]);
@@ -65,145 +52,110 @@ void getargs(int *port, int* threads_num, int* queue_size, enum SCHEDULER_ALGORI
     } else if (strcmp(argv[4], "random") == 0) {
         *schedalg = RANDOM;
     } else {
-        assert(false);
+        exit(1);
     }
 }
 
+void *processRequest(void *arg){
+    int threadIndex = *((int *) arg);
 
-void* processRequest(void* args){
-    int threadIndex = *((int *) args);
-
-    while(1) {
-
+    while(1){
         pthread_mutex_lock(&m);
-
         while(isEmpty(pendingRequestsQueue)) {
             pthread_cond_wait(&cond_is_pending_request_empty, &m);
         }
-
         Node* requestNode = dequeue(pendingRequestsQueue);
-        Node* workThreadNode = enqueue(workerThreadsQueue, requestNode->connfd, requestNode->arrival);
-        freeNode(requestNode);
-
 
         struct timeval handle;
         gettimeofday(&handle, NULL);
-
-        struct timeval dispatch;
-        timersub(&handle, &workThreadNode->arrival, &dispatch);
+        struct timeval dispatch_time;
+        timersub(&handle, &requestNode->arrival, &dispatch_time);
+        threadsInUse++;
         pthread_mutex_unlock(&m);
-        requestHandle(workThreadNode->connfd, workThreadNode->arrival, dispatch, threadsStats[threadIndex]);
-        Close(workThreadNode->connfd);
-
+        requestHandle(requestNode->connFd, requestNode->arrival, dispatch_time, threadsStats[threadIndex]);
+        Close(requestNode->connFd);
+        free(requestNode);
         pthread_mutex_lock(&m);
         pthread_cond_signal(&cond_is_buffer_available);
-        removeNode(workerThreadsQueue, workThreadNode);
+        threadsInUse--;
 
-        if (isEmpty(workerThreadsQueue) && isEmpty(pendingRequestsQueue)) {
-            pthread_cond_signal(&cond_is_worker_threads_and_pending_requests_empty);
+        if (isEmpty(pendingRequestsQueue) && threadsInUse == 0){
+            pthread_cond_signal(&cond_is_worker_threads_and_pending_requests_empty); // for block_flush sched algorithm
         }
-
-
         pthread_mutex_unlock(&m);
     }
 }
 
-
 int main(int argc, char *argv[])
 {
-    int listenFd, connFd, port, clientLen, threadsNum, queueSize;
+    int listenFd, connFd, port, clientLenAdd,threadsNum, queueSize;
     enum SCHEDULER_ALGORITHM schedAlg;
     struct sockaddr_in clientAddr;
     initializeMutexAndCond();
 
     getargs(&port, &threadsNum, &queueSize, &schedAlg, argc, argv);
-    assert(threadsNum > 0);
-    assert(queueSize > 0);
-    pendingRequestsQueue = createQueue(queueSize);
-    workerThreadsQueue = createQueue(queueSize);
-    pthread_t *threads = (pthread_t*)malloc(threadsNum * sizeof(pthread_t));
+    pendingRequestsQueue = createQueue();
 
+    pthread_t *threads = malloc(threadsNum * sizeof(pthread_t));
+    threadsStats = malloc(threadsNum * sizeof(thread_stats));
 
     for (int i = 0; i < threadsNum; i++) {
-        int *threadIndex = malloc(sizeof(int));
+        int* threadIndex = malloc(sizeof(int));
         *threadIndex = i;
-        if (pthread_create(&threads[i], NULL, processRequest, (void*) threadIndex) != 0) {
-            exit(EXIT_FAILURE);
-        }
+        pthread_create(&threads[i], NULL, processRequest, (void*)threadIndex);
+        threadsStats[i] = threadStatsCreate(i);
     }
-
-    threadsStats = (thread_stats*) malloc(threadsNum * sizeof(thread_stats));
-    for (int i = 0; i < threadsNum; i++) {
-        threadsStats[i] = (thread_stats) malloc(sizeof(struct Thread_stats));
-        threadsStats[i]->id = i;
-        threadsStats[i]->stat_req = 0;
-        threadsStats[i]->dynm_req = 0;
-        threadsStats[i]->total_req = 0;
-    }
-
 
     listenFd = Open_listenfd(port);
-    while (1) {
 
-        printQueue(workerThreadsQueue);
-        clientLen = sizeof(clientAddr);
-        connFd = Accept(listenFd, (SA *)&clientAddr, (socklen_t *) &clientLen);
+    while (1) {
+        clientLenAdd = sizeof(clientAddr);
+        connFd = Accept(listenFd, (SA *)&clientAddr, (socklen_t *) &clientLenAdd);
         struct timeval arrival;
         gettimeofday(&arrival, NULL);
         pthread_mutex_lock(&m);
 
-        if (getSize(pendingRequestsQueue) + getSize(workerThreadsQueue) == queueSize) {
-            if (schedAlg == BLOCK){
-
-                while(getSize(pendingRequestsQueue) + getSize(workerThreadsQueue) == queueSize){
-                    assert(getSize(pendingRequestsQueue) + getSize(workerThreadsQueue) <= queueSize);
+        if (getSize(pendingRequestsQueue) + threadsInUse == queueSize) {
+            if (schedAlg == BLOCK) {
+                while (getSize(pendingRequestsQueue) + threadsInUse == queueSize) {
                     pthread_cond_wait(&cond_is_buffer_available, &m);
                 }
-            }
-            else if (schedAlg == DROP_TAIL) {
+            } else if (schedAlg == DROP_TAIL) {
                 Close(connFd);
                 pthread_mutex_unlock(&m);
                 continue;
-            }
-            else if (schedAlg == DROP_HEAD) {
-                if (isEmpty(pendingRequestsQueue)){
+            } else if (schedAlg == DROP_HEAD) {
+                if (!isEmpty(pendingRequestsQueue)) {
+                    Node* head = dequeue(pendingRequestsQueue);
+                    Close(head->connFd);
+                } else {
                     Close(connFd);
                     pthread_mutex_unlock(&m);
                     continue;
                 }
-                else {
-                    Node* head = dequeue(pendingRequestsQueue);
-                    Close(head->connfd);
-                    freeNode(head);
-                }
-            }
-            else if (schedAlg == BLOCK_FLUSH) {
-                while (getSize(workerThreadsQueue) > 0){
+            } else if (schedAlg == BLOCK_FLUSH) {
+                while (getSize(pendingRequestsQueue) + threadsInUse > 0) {
                     pthread_cond_wait(&cond_is_worker_threads_and_pending_requests_empty, &m);
                 }
                 Close(connFd);
                 pthread_mutex_unlock(&m);
                 continue;
-            }
-            else if (schedAlg == RANDOM) {
-                int num_to_drop = (int)((getSize(pendingRequestsQueue) + 1) / 2);
+            } else if (schedAlg == RANDOM) {
 
-                if (isEmpty(pendingRequestsQueue)){
-                    assert(num_to_drop == 0);
+                if (isEmpty(pendingRequestsQueue)) {
                     Close(connFd);
                     pthread_mutex_unlock(&m);
                     continue;
                 }
-                assert(!isEmpty(pendingRequestsQueue));
 
-                for (int i = 0; i < num_to_drop; i++) {
-                    assert(!isEmpty(pendingRequestsQueue));
+                int numToDrop = (int) ((getSize(pendingRequestsQueue) + 1) / 2);
+
+                for (int i = 0; i < numToDrop; i++) {
                     int element_index_to_drop = rand() % getSize(pendingRequestsQueue);
                     Node* node_to_drop = getNodeInIndex(pendingRequestsQueue, element_index_to_drop);
-                    Close(node_to_drop->connfd);
+                    Close(node_to_drop->connFd);
                     removeNode(pendingRequestsQueue, node_to_drop);
                 }
-
             }
         }
         enqueue(pendingRequestsQueue, connFd, arrival);

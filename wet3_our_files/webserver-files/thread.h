@@ -1,6 +1,5 @@
-#ifndef WET3_OUR_FILES_THREAD_H
-#define WET3_OUR_FILES_THREAD_H
-
+#ifndef WET3_BACKUP_THREAD_H
+#define WET3_BACKUP_THREAD_H
 
 typedef struct Thread_stats{
     int id;
@@ -9,4 +8,6 @@ typedef struct Thread_stats{
     int total_req;
 } *thread_stats;
 
-#endif //WET3_OUR_FILES_THREAD_H
+thread_stats threadStatsCreate(int threadsNum);
+
+#endif //WET3_BACKUP_THREAD_H

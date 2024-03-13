@@ -2,7 +2,6 @@
 // request.c: Does the bulk of the work for the web server.
 // 
 
-#include <assert.h>
 #include "segel.h"
 #include "request.h"
 
@@ -72,7 +71,7 @@ void requestReadhdrs(rio_t *rp)
 // Return 1 if static, 0 if dynamic content
 // Calculates filename (and cgiargs, for dynamic) from uri
 //
-int requestParseURI(char *uri, char *filename, char *cgiargs) 
+int requestParseURI(char *uri, char *filename, char *cgiargs)
 {
     char *ptr;
 
@@ -175,7 +174,7 @@ void requestServeStatic(int fd, char *filename, int filesize, struct timeval arr
     sprintf(buf, "%sStat-Req-Arrival:: %lu.%06lu\r\n", buf, arrival.tv_sec, arrival.tv_usec);
 
     sprintf(buf, "%sStat-Req-Dispatch:: %lu.%06lu\r\n", buf, dispatch.tv_sec, dispatch.tv_usec);
-    assert(t_stats->id >= 0);
+
     sprintf(buf, "%sStat-Thread-Id:: %d\r\n", buf, t_stats->id);
 
     sprintf(buf, "%sStat-Thread-Count:: %d\r\n", buf, t_stats->total_req);
@@ -195,7 +194,6 @@ void requestServeStatic(int fd, char *filename, int filesize, struct timeval arr
 // handle a request
 void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, thread_stats t_stats)
 {
-    assert(t_stats->id >= 0);
     int is_static;
     struct stat sbuf;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
